@@ -666,10 +666,11 @@ async def analyze_heating_response(zone_id, zone_config, current_pid, hours=168)
                 if in_tolerance:
                     # Check if it stays in tolerance for remaining samples
                     remaining = temps_after_heating[i:]
-                    all_settled = all(
+                    settled_checks = [
                         (setpoint - cold_tolerance) <= rt['temp'] <= (setpoint + hot_tolerance)
                         for rt in remaining[:10]  # Check next 10 samples
-                    )
+                    ]
+                    all_settled = all(settled_checks)
                     if all_settled or len(remaining) < 3:
                         settled_time = t['time']
                         break
@@ -869,6 +870,151 @@ async def update_performance_sensors():
             }
         )
 
+# System-wide heat output sensors (supply/return temps)
+@time_trigger("cron(*/5 * * * *)")  # Update every 5 minutes
+async def update_system_heat_sensors():
+    """Update system-wide heat output sensors based on supply/return temps."""
+    _, constants, _, _ = _get_configs()
+
+    system_config = constants.get('system', {})
+    supply_sensor = system_config.get('supply_temp_sensor')
+    return_sensor = system_config.get('return_temp_sensor')
+    outdoor_sensor = system_config.get('outdoor_temp_sensor')
+    flow_sensor = system_config.get('flow_sensor')
+    flow_unit = system_config.get('flow_unit', 'l_h')
+    fallback_flow = system_config.get('fallback_flow_m3_h', 0.5)
+
+    # Get supply and return temperatures
+    supply_temp = None
+    return_temp = None
+    outdoor_temp = None
+    flow_rate = None
+    flow_source = "fallback"
+
+    if supply_sensor:
+        try:
+            supply_temp = float(state.get(supply_sensor))
+        except (NameError, ValueError, TypeError):
+            pass
+
+    if return_sensor:
+        try:
+            return_temp = float(state.get(return_sensor))
+        except (NameError, ValueError, TypeError):
+            pass
+
+    if outdoor_sensor:
+        try:
+            outdoor_temp = float(state.get(outdoor_sensor))
+        except (NameError, ValueError, TypeError):
+            pass
+
+    # Get flow rate from sensor or use fallback
+    if flow_sensor:
+        try:
+            raw_flow = float(state.get(flow_sensor))
+            if raw_flow > 0:
+                # Convert to m³/h based on unit
+                if flow_unit == 'l_h':
+                    flow_rate = raw_flow / 1000  # L/h to m³/h
+                elif flow_unit == 'l_min':
+                    flow_rate = raw_flow * 60 / 1000  # L/min to m³/h
+                elif flow_unit == 'm3_h':
+                    flow_rate = raw_flow  # Already in m³/h
+                else:
+                    flow_rate = raw_flow / 1000  # Default: assume L/h
+                flow_source = "sensor"
+        except (NameError, ValueError, TypeError):
+            pass
+
+    # Use fallback if sensor not available or zero flow
+    if flow_rate is None or flow_rate <= 0:
+        flow_rate = fallback_flow
+        flow_source = "fallback"
+
+    # Calculate delta T and heat output
+    if supply_temp is not None and return_temp is not None:
+        delta_t = supply_temp - return_temp
+
+        # Heat output: Q (kW) = flow_rate (m³/h) × 1.163 × ΔT
+        # Formula: Q = m × cp × ΔT where water cp = 4.186 kJ/(kg·K), density = 1000 kg/m³
+        # Simplified: Q (kW) = flow_rate (m³/h) × 4186 / 3600 × ΔT = flow_rate × 1.163 × ΔT
+        heat_output_kw = flow_rate * 1.163 * delta_t
+
+        # Create sensors
+        state.set(
+            "sensor.heating_supply_temp",
+            round(supply_temp, 1),
+            {
+                "unit_of_measurement": "°C",
+                "friendly_name": "Heating Supply Temperature",
+                "icon": "mdi:thermometer-chevron-up"
+            }
+        )
+
+        state.set(
+            "sensor.heating_return_temp",
+            round(return_temp, 1),
+            {
+                "unit_of_measurement": "°C",
+                "friendly_name": "Heating Return Temperature",
+                "icon": "mdi:thermometer-chevron-down"
+            }
+        )
+
+        state.set(
+            "sensor.heating_delta_t",
+            round(delta_t, 1),
+            {
+                "unit_of_measurement": "°C",
+                "friendly_name": "Heating ΔT (Supply-Return)",
+                "icon": "mdi:thermometer-lines",
+                "supply_temp": round(supply_temp, 1),
+                "return_temp": round(return_temp, 1)
+            }
+        )
+
+        state.set(
+            "sensor.heating_heat_output",
+            round(heat_output_kw, 2),
+            {
+                "unit_of_measurement": "kW",
+                "friendly_name": "Heating Heat Output",
+                "icon": "mdi:fire",
+                "flow_rate_m3_h": round(flow_rate, 4),
+                "flow_source": flow_source,
+                "delta_t": round(delta_t, 1)
+            }
+        )
+
+        # Also create a flow rate sensor for visibility
+        state.set(
+            "sensor.heating_flow_rate",
+            round(flow_rate * 1000, 1),  # Display in L/h for readability
+            {
+                "unit_of_measurement": "L/h",
+                "friendly_name": "Heating Flow Rate",
+                "icon": "mdi:water-pump",
+                "source": flow_source,
+                "m3_h": round(flow_rate, 4)
+            }
+        )
+
+        # Log for debugging
+        log.debug(f"Heat output: {heat_output_kw:.2f} kW (ΔT={delta_t:.1f}°C, flow={flow_rate:.4f} m³/h [{flow_source}])")
+
+    # Outdoor temperature sensor (for reference/weather compensation)
+    if outdoor_temp is not None:
+        state.set(
+            "sensor.heating_outdoor_temp",
+            round(outdoor_temp, 1),
+            {
+                "unit_of_measurement": "°C",
+                "friendly_name": "Outdoor Temperature",
+                "icon": "mdi:thermometer"
+            }
+        )
+
 # PID sensors - current values from configuration.yaml
 @time_trigger("startup")
 async def update_current_pid_sensors():
@@ -1029,14 +1175,46 @@ async def update_cost_sensor():
     # Get GJ meter reading if available
     gj_sensor = constants['energy'].get('gj_meter_sensor')
     gj_to_kwh = constants['energy']['gj_to_kwh_factor']
+    meter_type = constants['energy'].get('meter_type', 'cumulative')
 
-    if gj_sensor and state.get(gj_sensor):
-        # Use actual GJ meter
-        gj_used = float(state.get(gj_sensor) or 0)
-        kwh_used = gj_used * gj_to_kwh
-        cost = gj_used * gj_cost
-    else:
-        # Estimate from duty cycles
+    gj_used = 0
+    kwh_used = 0
+    cost = 0
+
+    if gj_sensor:
+        try:
+            current_gj = float(state.get(gj_sensor) or 0)
+
+            if meter_type == 'cumulative':
+                # For cumulative meters, calculate weekly delta using history
+                gj_history = await _fetch_state_history(hass, gj_sensor,
+                    datetime.now() - timedelta(days=7), datetime.now())
+
+                if gj_history and len(gj_history) > 0:
+                    # Get the oldest reading from 7 days ago
+                    try:
+                        oldest_gj = float(gj_history[0].state)
+                        gj_used = max(0, current_gj - oldest_gj)
+                        log.debug(f"GJ meter: current={current_gj}, 7d ago={oldest_gj}, weekly={gj_used}")
+                    except (ValueError, TypeError):
+                        log.warning(f"Could not parse GJ history, using estimate")
+                        gj_used = 0
+                else:
+                    log.warning(f"No GJ history available for weekly calculation")
+                    gj_used = 0
+            else:
+                # For delta/utility meters that reset weekly, use current value directly
+                gj_used = current_gj
+
+            if gj_used > 0:
+                kwh_used = gj_used * gj_to_kwh
+                cost = gj_used * gj_cost
+        except (NameError, ValueError, TypeError) as e:
+            log.warning(f"Error reading GJ sensor: {e}")
+            gj_used = 0
+
+    # Fallback to duty cycle estimation if no GJ data
+    if gj_used == 0:
         total_kwh = 0
         for zone_id, zone_config in zones_config['zones'].items():
             try:
@@ -1061,7 +1239,8 @@ async def update_cost_sensor():
             "friendly_name": "Heating Weekly Cost",
             "icon": "mdi:currency-eur",
             "gj_used": round(gj_used, 3),
-            "kwh_used": round(kwh_used, 1)
+            "kwh_used": round(kwh_used, 1),
+            "source": "gj_meter" if gj_used > 0 else "estimated"
         }
     )
 
@@ -1412,27 +1591,65 @@ async def heating_cost_report():
     except NameError:
         gj_cost = constants['energy'].get('default_gj_cost', 35)
     gj_to_kwh = constants['energy']['gj_to_kwh_factor']
+    gj_sensor = constants['energy'].get('gj_meter_sensor')
+    meter_type = constants['energy'].get('meter_type', 'cumulative')
 
     report_lines = ["Heating Cost Report", "=" * 30, ""]
     report_lines.append(f"GJ Price: €{gj_cost}/GJ")
     report_lines.append("")
 
+    # Get actual GJ meter reading if available
+    actual_gj_weekly = None
+    if gj_sensor:
+        try:
+            current_gj = float(state.get(gj_sensor) or 0)
+            if meter_type == 'cumulative':
+                gj_history = await _fetch_state_history(hass, gj_sensor,
+                    datetime.now() - timedelta(days=7), datetime.now())
+                if gj_history and len(gj_history) > 0:
+                    oldest_gj = float(gj_history[0].state)
+                    actual_gj_weekly = max(0, current_gj - oldest_gj)
+            else:
+                actual_gj_weekly = current_gj
+        except (NameError, ValueError, TypeError):
+            pass
+
+    # Per-zone estimates
+    report_lines.append("Per-Zone Estimates (duty cycle):")
     total_kwh = 0
     for zone_id, zone_config in zones_config['zones'].items():
-        duty = float(state.get(f"sensor.heating_{zone_id}_duty_cycle") or 0)
+        try:
+            duty = float(state.get(f"sensor.heating_{zone_id}_duty_cycle") or 0)
+        except NameError:
+            duty = 0
         area = zone_config['area_m2']
         zone_kwh_day = (duty / 100) * 50 * area * 24 / 1000
         zone_kwh_week = zone_kwh_day * 7
 
-        report_lines.append(f"{zone_config['display_name']}: {zone_kwh_week:.1f} kWh/week")
+        report_lines.append(f"  {zone_config['display_name']}: {zone_kwh_week:.1f} kWh/week")
         total_kwh += zone_kwh_week
 
-    gj_used = total_kwh / gj_to_kwh
-    cost = gj_used * gj_cost
+    estimated_gj = total_kwh / gj_to_kwh
+    estimated_cost = estimated_gj * gj_cost
 
     report_lines.append("")
-    report_lines.append(f"Total: {total_kwh:.1f} kWh ({gj_used:.3f} GJ)")
-    report_lines.append(f"Weekly Cost: €{cost:.2f}")
+    report_lines.append(f"Estimated Total: {total_kwh:.1f} kWh ({estimated_gj:.3f} GJ)")
+    report_lines.append(f"Estimated Cost: €{estimated_cost:.2f}")
+
+    # Show actual meter reading if available
+    if actual_gj_weekly is not None:
+        actual_kwh = actual_gj_weekly * gj_to_kwh
+        actual_cost = actual_gj_weekly * gj_cost
+        report_lines.append("")
+        report_lines.append("Actual (GJ meter):")
+        report_lines.append(f"  Weekly: {actual_kwh:.1f} kWh ({actual_gj_weekly:.3f} GJ)")
+        report_lines.append(f"  Cost: €{actual_cost:.2f}")
+        # Use actual values for summary
+        gj_used = actual_gj_weekly
+        cost = actual_cost
+    else:
+        gj_used = estimated_gj
+        cost = estimated_cost
 
     full_message = "\n".join(report_lines)
 
@@ -1443,7 +1660,9 @@ async def heating_cost_report():
                  notification_id="heating_cost_report")
 
     # Send short summary to mobile
-    mobile_summary = f"Weekly: {total_kwh:.1f} kWh ({gj_used:.3f} GJ)\nCost: €{cost:.2f}"
+    kwh_for_summary = gj_used * gj_to_kwh
+    source_label = " (actual)" if actual_gj_weekly is not None else " (est)"
+    mobile_summary = f"Weekly: {kwh_for_summary:.1f} kWh ({gj_used:.3f} GJ){source_label}\nCost: €{cost:.2f}"
 
     service.call("notify", notification_service,
                  message=mobile_summary,

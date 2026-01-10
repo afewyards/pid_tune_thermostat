@@ -35,11 +35,15 @@ thresholds:
 # =============================================================================
 system:
   # These measure supply/return temps on the main heating line (system-wide)
-  supply_temp_sensor: "input_number.heating_main_supply_temp"
-  return_temp_sensor: "input_number.heating_main_return_temp"
+  supply_temp_sensor: "sensor.heating_main_supply_temp"
+  return_temp_sensor: "sensor.heating_main_return_temp"
 
-  # Flow rate
-  total_flow_m3_h: 0.5 # Total system flow rate
+  # Flow rate - used for real-time heat output calculation
+  # Option 1: Use a flow sensor (set flow_sensor entity ID)
+  # Option 2: Use static value (set flow_sensor to null)
+  flow_sensor: "sensor.heating_water_flow"
+  flow_unit: "l_h"   # "l_h" (liters/hour), "l_min" (liters/min), or "m3_h" (cubic meters/hour)
+  fallback_flow_m3_h: 0.5  # Used when flow_sensor is null or unavailable
 
   # Outdoor temperature sensor (for weather compensation)
   outdoor_temp_sensor: "sensor.temperature"
@@ -50,7 +54,7 @@ system:
 energy:
   # GJ meter sensor (to be integrated)
   # IMPORTANT: GJ meter includes heating + hot water + showers
-  gj_meter_sensor: null # TODO: sensor.energy_gj or sensor.heating_gj_weekly
+  gj_meter_sensor: "sensor.heating_energy_gj"
 
   # Conversion factor
   gj_to_kwh_factor: 277.778 # 1 GJ = 277.778 kWh
