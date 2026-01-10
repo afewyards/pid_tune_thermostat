@@ -1,0 +1,160 @@
+# =============================================================================
+# ZONE CONFIGURATION
+# =============================================================================
+# Single source of truth for all zone metadata
+# Used by heating_services.py for thermal analysis and reporting
+#
+# Note: Water temperature sensors are on the main line (system-wide),
+# not per-zone. They are configured in constants.yaml.
+
+zones:
+  gf:
+    name: "Ground Floor"
+    display_name: "Ground Floor"
+    floor: 0
+    area_m2: 28
+    volume_m3: 75.6
+    ceiling_height_m: 2.7
+    cool_rate_c_per_hour: 0.05 # Measured from actual system data
+
+    # Entity IDs
+    climate_entity: "climate.thermostat_gf"
+    heater_switch: "switch.gf_heating"
+    cooler_switch: "switch.gf_cooling"
+    temperature_sensor: "sensor.gf_temperature"
+
+    # Zone-specific characteristics
+    notes: "2 doors to outdoors - sudden heat loss disturbances"
+
+  kitchen:
+    name: "Kitchen"
+    display_name: "Kitchen"
+    floor: 1
+    area_m2: 28.5
+    volume_m3: 71.25
+    ceiling_height_m: 2.5
+    cool_rate_c_per_hour: 0.062 # Measured (1st floor average)
+
+    # Entity IDs
+    climate_entity: "climate.thermostat_1st_kitchen"
+    heater_switch: "switch.1st_kitchen_heating"
+    cooler_switch: "switch.1st_kitchen_cooling"
+    temperature_sensor: "sensor.1st_kitchen_sensor_temperature"
+
+    # Zone-specific characteristics
+    notes: "Terrace door (cats) + 2 ovens - bidirectional disturbances"
+
+  living_room:
+    name: "Living Room"
+    display_name: "Living Room"
+    floor: 1
+    area_m2: 28.5
+    volume_m3: 71.25
+    ceiling_height_m: 2.5
+    cool_rate_c_per_hour: 0.062 # Same as kitchen (open space)
+
+    # Entity IDs
+    climate_entity: "climate.thermostat_1st_living_room"
+    heater_switch: "switch.1st_livingroom_heating"
+    cooler_switch: "switch.1st_livingroom_cooling"
+    temperature_sensor: "sensor.1st_livingroom_sensor_temperature"
+
+    # Zone-specific characteristics
+    notes: "Open space with kitchen - thermally influenced by kitchen disturbances"
+
+  bedroom:
+    name: "Bedroom"
+    display_name: "Bedroom"
+    floor: 2
+    area_m2: 19
+    volume_m3: 51.3
+    ceiling_height_m: 2.7
+    cool_rate_c_per_hour: 0.05 # Estimated
+
+    # Entity IDs
+    climate_entity: "climate.thermostat_2nd_bedroom"
+    heater_switch: "switch.2nd_bedroom_heating"
+    cooler_switch: "switch.2nd_bedroom_cooling"
+    temperature_sensor: "sensor.2nd_bedroom_sensor_temperature"
+
+    # Zone-specific characteristics
+    notes: "Window open at night for ventilation - consider window sensor"
+
+  bathroom:
+    name: "Bathroom"
+    display_name: "Bathroom"
+    floor: 2
+    area_m2: 9
+    volume_m3: 24.3
+    ceiling_height_m: 2.7
+    cool_rate_c_per_hour: 0.08 # Higher due to skylight
+
+    # Entity IDs
+    climate_entity: "climate.thermostat_2nd_bathroom"
+    heater_switch: "switch.2nd_bathroom_heating"
+    cooler_switch: "switch.2nd_bathroom_cooling"
+    temperature_sensor: "sensor.2nd_bathroom_sensor_temperature_3"
+
+    # Zone-specific characteristics
+    notes: "1.6m2 skylight (18% of floor area) - higher heat loss expected ~18 W/m2"
+
+  study:
+    name: "Study"
+    display_name: "Study"
+    floor: 2
+    area_m2: 15
+    volume_m3: 40.5
+    ceiling_height_m: 2.7
+    cool_rate_c_per_hour: 0.05
+
+    # Entity IDs
+    climate_entity: "climate.thermostat_2nd_study"
+    heater_switch: "switch.2nd_guestroom_heating"
+    cooler_switch: "switch.2nd_guestroom_cooling"
+    temperature_sensor: "sensor.2nd_hallway_sensor_temperature"
+
+    # Zone-specific characteristics
+    notes: "Uses hallway sensor for temperature"
+
+  hallway:
+    name: "Hallway"
+    display_name: "Hallway"
+    floor: 2
+    area_m2: 8
+    volume_m3: 21.6
+    ceiling_height_m: 2.7
+    cool_rate_c_per_hour: 0.05
+
+    # Entity IDs
+    climate_entity: "climate.thermostat_2nd_hallway"
+    heater_switch: "switch.2nd_hallway_heating"
+    cooler_switch: "switch.2nd_hallway_cooling"
+    temperature_sensor: "sensor.2nd_hallway_sensor_temperature"
+
+    # Zone-specific characteristics
+    notes: ""
+
+# =============================================================================
+# ZONE GROUPS (for aggregated reporting)
+# =============================================================================
+zone_groups:
+  ground_floor:
+    zones: ["gf"]
+    total_area_m2: 28
+
+  first_floor:
+    zones: ["kitchen", "living_room"]
+    total_area_m2: 57
+    notes: "Open space - zones thermally connected"
+
+  second_floor:
+    zones: ["bedroom", "bathroom", "study", "hallway"]
+    total_area_m2: 51
+
+# =============================================================================
+# SYSTEM TOTALS (calculated from zones)
+# =============================================================================
+system:
+  total_area_m2: 136
+  total_volume_m3: 355.8
+  zone_count: 7

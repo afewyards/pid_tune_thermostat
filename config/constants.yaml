@@ -1,0 +1,135 @@
+# =============================================================================
+# SYSTEM CONSTANTS
+# =============================================================================
+# Centralized configuration for all magic numbers and system-wide settings
+# Used by heating_services.py for thermal analysis and reporting
+
+# =============================================================================
+# NOTIFICATION SETTINGS
+# =============================================================================
+notification:
+  # Change this to your mobile app notification service
+  # Find it in: Developer Tools > Services > search "notify"
+  service: "mobile_app_thierry"
+
+  # Weekly report schedule (cron format)
+  weekly_report_cron: "0 9 * * 0" # Sunday at 9:00 AM
+
+  # Health monitoring schedule
+  health_check_cron: "0 */6 * * *" # Every 6 hours
+
+# =============================================================================
+# PERFORMANCE THRESHOLDS
+# =============================================================================
+thresholds:
+  # Power demand (W/m2)
+  excellent_w_m2: 10 # A+++ excellent performance
+  target_w_m2: 15 # A+++ target
+
+  # Cycle time (minutes)
+  min_cycle_time_min: 15 # Minimum acceptable
+  max_cycle_time_min: 30 # Maximum before too slow
+
+# =============================================================================
+# SYSTEM PROPERTIES
+# =============================================================================
+system:
+  # These measure supply/return temps on the main heating line (system-wide)
+  supply_temp_sensor: "input_number.heating_main_supply_temp"
+  return_temp_sensor: "input_number.heating_main_return_temp"
+
+  # Flow rate
+  total_flow_m3_h: 0.5 # Total system flow rate
+
+  # Outdoor temperature sensor (for weather compensation)
+  outdoor_temp_sensor: "sensor.temperature"
+
+# =============================================================================
+# ENERGY MONITORING
+# =============================================================================
+energy:
+  # GJ meter sensor (to be integrated)
+  # IMPORTANT: GJ meter includes heating + hot water + showers
+  gj_meter_sensor: null # TODO: sensor.energy_gj or sensor.heating_gj_weekly
+
+  # Conversion factor
+  gj_to_kwh_factor: 277.778 # 1 GJ = 277.778 kWh
+
+  # Track total energy for reference
+  track_total_energy: true # Track GJ meter as system total
+
+  # GJ meter type: cumulative or delta
+  # - cumulative: Meter shows total since installation (most common)
+  # - delta: Meter resets weekly (use utility_meter helper)
+  meter_type: "cumulative"
+
+  # GJ cost input helper (add to configuration.yaml):
+  # input_number:
+  #   heating_gj_cost:
+  #     name: "Heating Cost per GJ"
+  #     min: 0
+  #     max: 100
+  #     step: 0.01
+  #     unit_of_measurement: "EUR/GJ"
+  #     icon: mdi:currency-eur
+  #     initial: 35  # Typical district heating price
+  gj_cost_entity: "input_number.heating_gj_cost"
+  default_gj_cost: 35 # EUR/GJ - typical district heating price
+
+# =============================================================================
+# MATERIAL PROPERTIES
+# =============================================================================
+materials:
+  # Air properties
+  rho_air: 1.2 # kg/m3 - air density
+  cp_air: 1.005 # kJ/(kg*K) - specific heat of air
+
+  # Concrete/screed properties
+  rho_concrete: 2400 # kg/m3 - concrete density
+  cp_concrete: 0.88 # kJ/(kg*K) - specific heat of concrete
+
+# =============================================================================
+# PID TUNING PARAMETERS
+# =============================================================================
+pid_tuning:
+  # Proportional gain limits
+  kp_min: 0.3
+  kp_max: 0.8
+
+  # Integral gain limits
+  ki_min: 0.005
+  ki_max: 0.02
+
+  # Derivative gain recommendations by thermal time constant
+  kd_slow: 5 # For tau > 20 hours
+  kd_medium: 7 # For 15 < tau <= 20 hours
+  kd_fast: 10 # For tau <= 15 hours
+
+  # Thermal deadtime factor (fraction of time constant)
+  thermal_deadtime_factor: 0.1
+
+  # System gain assumption for Ziegler-Nichols
+  system_gain: 2.0
+
+# =============================================================================
+# DEGREE DAY CALCULATION
+# =============================================================================
+degree_days:
+  # Base temperature for heating degree days
+  base_temp_c: 18
+
+  # Analysis period (days)
+  analysis_period_days: 7
+
+# =============================================================================
+# HEALTH MONITORING
+# =============================================================================
+health:
+  # Zones to exclude from high power warnings
+  high_power_exception_zones:
+    - "bathroom" # Skylight causes legitimately higher demand
+
+  # Warning thresholds
+  very_short_cycle_min: 10 # Very short if < 10 minutes
+  short_cycle_min: 15 # Short if < 15 minutes
+  high_power_threshold_w_m2: 20 # target_w_m2 + 5

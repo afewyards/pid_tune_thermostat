@@ -1,0 +1,388 @@
+title: Heating
+views:
+  - title: Heating Analysis
+    path: heating
+    icon: mdi:radiator
+    cards:
+      # ==========================================================================
+      # SYSTEM OVERVIEW ROW
+      # ==========================================================================
+      - type: horizontal-stack
+        cards:
+          - type: entity
+            entity: sensor.heating_system_health
+            name: System Health
+            icon: mdi:heart-pulse
+          - type: gauge
+            entity: sensor.heating_total_power_m2
+            name: Total Power
+            unit: W/m²
+            min: 0
+            max: 20
+            severity:
+              green: 0
+              yellow: 10
+              red: 15
+            needle: true
+          - type: gauge
+            entity: sensor.heating_total_cost
+            name: Weekly Cost
+            unit: EUR
+            min: 0
+            max: 50
+            needle: true
+          - type: entities
+            entities:
+              - entity: input_number.heating_gj_cost
+                name: GJ Price (EUR)
+                icon: mdi:currency-eur
+
+      # ==========================================================================
+      # POWER HISTORY GRAPH (7 days)
+      # ==========================================================================
+      - type: history-graph
+        title: Power History (7 days)
+        hours_to_show: 168
+        entities:
+          - entity: sensor.heating_gf_power_m2
+            name: Ground Floor
+          - entity: sensor.heating_kitchen_power_m2
+            name: Kitchen
+          - entity: sensor.heating_living_room_power_m2
+            name: Living Room
+          - entity: sensor.heating_bedroom_power_m2
+            name: Bedroom
+          - entity: sensor.heating_bathroom_power_m2
+            name: Bathroom
+          - entity: sensor.heating_study_power_m2
+            name: Study
+          - entity: sensor.heating_hallway_power_m2
+            name: Hallway
+
+      # ==========================================================================
+      # QUICK ACTIONS
+      # ==========================================================================
+      - type: horizontal-stack
+        cards:
+          - type: button
+            name: Run Learning
+            icon: mdi:brain
+            icon_height: 40px
+            tap_action:
+              action: call-service
+              service: pyscript.heating_run_learning
+          - type: button
+            name: PID Report
+            icon: mdi:tune
+            icon_height: 40px
+            tap_action:
+              action: call-service
+              service: pyscript.heating_pid_recommendations
+          - type: button
+            name: Health Check
+            icon: mdi:heart-pulse
+            icon_height: 40px
+            tap_action:
+              action: call-service
+              service: pyscript.heating_health_check
+          - type: button
+            name: Weekly Report
+            icon: mdi:file-chart
+            icon_height: 40px
+            tap_action:
+              action: call-service
+              service: pyscript.heating_weekly_report
+          - type: button
+            name: Cost Report
+            icon: mdi:currency-eur
+            icon_height: 40px
+            tap_action:
+              action: call-service
+              service: pyscript.heating_cost_report
+
+      # ==========================================================================
+      # PID TUNING - GROUND FLOOR
+      # ==========================================================================
+      - type: vertical-stack
+        title: Ground Floor - PID Tuning
+        cards:
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 6
+            entities:
+              - entity: sensor.heating_gf_current_kp
+                name: Kp
+              - entity: sensor.heating_gf_recommended_kp
+                name: Rec Kp
+              - entity: sensor.heating_gf_current_ki
+                name: Ki
+              - entity: sensor.heating_gf_recommended_ki
+                name: Rec Ki
+              - entity: sensor.heating_gf_current_kd
+                name: Kd
+              - entity: sensor.heating_gf_recommended_kd
+                name: Rec Kd
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 4
+            entities:
+              - entity: sensor.heating_gf_overshoot
+                name: Overshoot
+                icon: mdi:thermometer-chevron-up
+              - entity: sensor.heating_gf_settling_time
+                name: Settling
+                icon: mdi:timer-sand
+              - entity: sensor.heating_gf_oscillations
+                name: Oscillations
+                icon: mdi:sine-wave
+              - entity: sensor.heating_gf_duty_cycle
+                name: Duty Cycle
+                icon: mdi:percent
+
+      # ==========================================================================
+      # PID TUNING - KITCHEN
+      # ==========================================================================
+      - type: vertical-stack
+        title: Kitchen - PID Tuning
+        cards:
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 6
+            entities:
+              - entity: sensor.heating_kitchen_current_kp
+                name: Kp
+              - entity: sensor.heating_kitchen_recommended_kp
+                name: Rec Kp
+              - entity: sensor.heating_kitchen_current_ki
+                name: Ki
+              - entity: sensor.heating_kitchen_recommended_ki
+                name: Rec Ki
+              - entity: sensor.heating_kitchen_current_kd
+                name: Kd
+              - entity: sensor.heating_kitchen_recommended_kd
+                name: Rec Kd
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 4
+            entities:
+              - entity: sensor.heating_kitchen_overshoot
+                name: Overshoot
+                icon: mdi:thermometer-chevron-up
+              - entity: sensor.heating_kitchen_settling_time
+                name: Settling
+                icon: mdi:timer-sand
+              - entity: sensor.heating_kitchen_oscillations
+                name: Oscillations
+                icon: mdi:sine-wave
+              - entity: sensor.heating_kitchen_duty_cycle
+                name: Duty Cycle
+                icon: mdi:percent
+
+      # ==========================================================================
+      # PID TUNING - LIVING ROOM
+      # ==========================================================================
+      - type: vertical-stack
+        title: Living Room - PID Tuning
+        cards:
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 6
+            entities:
+              - entity: sensor.heating_living_room_current_kp
+                name: Kp
+              - entity: sensor.heating_living_room_recommended_kp
+                name: Rec Kp
+              - entity: sensor.heating_living_room_current_ki
+                name: Ki
+              - entity: sensor.heating_living_room_recommended_ki
+                name: Rec Ki
+              - entity: sensor.heating_living_room_current_kd
+                name: Kd
+              - entity: sensor.heating_living_room_recommended_kd
+                name: Rec Kd
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 4
+            entities:
+              - entity: sensor.heating_living_room_overshoot
+                name: Overshoot
+                icon: mdi:thermometer-chevron-up
+              - entity: sensor.heating_living_room_settling_time
+                name: Settling
+                icon: mdi:timer-sand
+              - entity: sensor.heating_living_room_oscillations
+                name: Oscillations
+                icon: mdi:sine-wave
+              - entity: sensor.heating_living_room_duty_cycle
+                name: Duty Cycle
+                icon: mdi:percent
+
+      # ==========================================================================
+      # PID TUNING - BEDROOM
+      # ==========================================================================
+      - type: vertical-stack
+        title: Bedroom - PID Tuning
+        cards:
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 6
+            entities:
+              - entity: sensor.heating_bedroom_current_kp
+                name: Kp
+              - entity: sensor.heating_bedroom_recommended_kp
+                name: Rec Kp
+              - entity: sensor.heating_bedroom_current_ki
+                name: Ki
+              - entity: sensor.heating_bedroom_recommended_ki
+                name: Rec Ki
+              - entity: sensor.heating_bedroom_current_kd
+                name: Kd
+              - entity: sensor.heating_bedroom_recommended_kd
+                name: Rec Kd
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 4
+            entities:
+              - entity: sensor.heating_bedroom_overshoot
+                name: Overshoot
+                icon: mdi:thermometer-chevron-up
+              - entity: sensor.heating_bedroom_settling_time
+                name: Settling
+                icon: mdi:timer-sand
+              - entity: sensor.heating_bedroom_oscillations
+                name: Oscillations
+                icon: mdi:sine-wave
+              - entity: sensor.heating_bedroom_duty_cycle
+                name: Duty Cycle
+                icon: mdi:percent
+
+      # ==========================================================================
+      # PID TUNING - BATHROOM
+      # ==========================================================================
+      - type: vertical-stack
+        title: Bathroom - PID Tuning
+        cards:
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 6
+            entities:
+              - entity: sensor.heating_bathroom_current_kp
+                name: Kp
+              - entity: sensor.heating_bathroom_recommended_kp
+                name: Rec Kp
+              - entity: sensor.heating_bathroom_current_ki
+                name: Ki
+              - entity: sensor.heating_bathroom_recommended_ki
+                name: Rec Ki
+              - entity: sensor.heating_bathroom_current_kd
+                name: Kd
+              - entity: sensor.heating_bathroom_recommended_kd
+                name: Rec Kd
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 4
+            entities:
+              - entity: sensor.heating_bathroom_overshoot
+                name: Overshoot
+                icon: mdi:thermometer-chevron-up
+              - entity: sensor.heating_bathroom_settling_time
+                name: Settling
+                icon: mdi:timer-sand
+              - entity: sensor.heating_bathroom_oscillations
+                name: Oscillations
+                icon: mdi:sine-wave
+              - entity: sensor.heating_bathroom_duty_cycle
+                name: Duty Cycle
+                icon: mdi:percent
+
+      # ==========================================================================
+      # PID TUNING - STUDY
+      # ==========================================================================
+      - type: vertical-stack
+        title: Study - PID Tuning
+        cards:
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 6
+            entities:
+              - entity: sensor.heating_study_current_kp
+                name: Kp
+              - entity: sensor.heating_study_recommended_kp
+                name: Rec Kp
+              - entity: sensor.heating_study_current_ki
+                name: Ki
+              - entity: sensor.heating_study_recommended_ki
+                name: Rec Ki
+              - entity: sensor.heating_study_current_kd
+                name: Kd
+              - entity: sensor.heating_study_recommended_kd
+                name: Rec Kd
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 4
+            entities:
+              - entity: sensor.heating_study_overshoot
+                name: Overshoot
+                icon: mdi:thermometer-chevron-up
+              - entity: sensor.heating_study_settling_time
+                name: Settling
+                icon: mdi:timer-sand
+              - entity: sensor.heating_study_oscillations
+                name: Oscillations
+                icon: mdi:sine-wave
+              - entity: sensor.heating_study_duty_cycle
+                name: Duty Cycle
+                icon: mdi:percent
+
+      # ==========================================================================
+      # PID TUNING - HALLWAY
+      # ==========================================================================
+      - type: vertical-stack
+        title: Hallway - PID Tuning
+        cards:
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 6
+            entities:
+              - entity: sensor.heating_hallway_current_kp
+                name: Kp
+              - entity: sensor.heating_hallway_recommended_kp
+                name: Rec Kp
+              - entity: sensor.heating_hallway_current_ki
+                name: Ki
+              - entity: sensor.heating_hallway_recommended_ki
+                name: Rec Ki
+              - entity: sensor.heating_hallway_current_kd
+                name: Kd
+              - entity: sensor.heating_hallway_recommended_kd
+                name: Rec Kd
+          - type: glance
+            show_name: true
+            show_state: true
+            columns: 4
+            entities:
+              - entity: sensor.heating_hallway_overshoot
+                name: Overshoot
+                icon: mdi:thermometer-chevron-up
+              - entity: sensor.heating_hallway_settling_time
+                name: Settling
+                icon: mdi:timer-sand
+              - entity: sensor.heating_hallway_oscillations
+                name: Oscillations
+                icon: mdi:sine-wave
+              - entity: sensor.heating_hallway_duty_cycle
+                name: Duty Cycle
+                icon: mdi:percent
