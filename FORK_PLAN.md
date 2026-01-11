@@ -334,21 +334,24 @@ custom_components/adaptive_thermostat/
           - climate.living_room
         link_delay_minutes: 10
 
-        # Energy tracking
-        gj_meter_entity: sensor.heating_gj
-        gj_cost_entity: input_number.gj_price
-
-        # Heat output
-        supply_temp_sensor: sensor.heating_supply
-        return_temp_sensor: sensor.heating_return
-        flow_rate_sensor: sensor.heating_flow  # optional
-        fallback_flow_rate: 0.5  # m3/h
-
     # System-level configuration (separate from per-zone)
     adaptive_thermostat:
       # House properties (for physics-based tuning baseline)
       house_energy_rating: A+++  # A+++, A++, A+, A, B, C, D, E, F, G
       # Used for initial PID estimates before learning data available
+
+      # System heat output sensors - all optional
+      supply_temp_sensor: sensor.heating_supply  # optional - enables heat output (kW) calc
+      return_temp_sensor: sensor.heating_return  # optional - enables delta-T monitoring
+      flow_rate_sensor: sensor.heating_flow  # optional - real-time flow (L/h or m3/h)
+      volume_meter_entity: sensor.heating_volume_m3  # optional - cumulative m3 from city heating
+      fallback_flow_rate: 0.5  # m3/h when neither flow sensor nor volume meter available
+      # If both flow + volume present: flow for real-time, volume for accurate totals
+      # Can cross-validate sensors (volume delta vs integrated flow)
+
+      # Energy metering - all optional
+      gj_meter_entity: sensor.heating_gj  # optional - enables actual energy tracking
+      gj_cost_entity: input_number.gj_price  # optional - enables cost reports (EUR per GJ)
 
       # Central heat source control
       main_heater_switch: switch.boiler  # or heat pump - ON when any zone needs heat
