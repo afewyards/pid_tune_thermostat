@@ -289,12 +289,6 @@ custom_components/adaptive_thermostat/
         target_sensor: sensor.temp_gf
         outdoor_sensor: sensor.outdoor_temp
 
-        # Existing HST options
-        kp: 0.5
-        ki: 0.01
-        kd: 5
-        ke: 0.6
-
         # Zone properties (for physics-based tuning)
         area_m2: 28
         ceiling_height: 2.5  # meters - volume auto-calculated (area × height)
@@ -333,6 +327,13 @@ custom_components/adaptive_thermostat/
           - climate.kitchen
           - climate.living_room
         link_delay_minutes: 10
+
+        # Optional: manual PID override (disables auto-tuning for this zone)
+        # pid_override:
+        #   kp: 0.5
+        #   ki: 0.01
+        #   kd: 5
+        #   ke: 0.6
 
     # System-level configuration (separate from per-zone)
     adaptive_thermostat:
@@ -543,10 +544,12 @@ custom_components/adaptive_thermostat/
 
 ## Key Design Decisions
 
-1. **Thermal rates auto-learned** - No manual cool_rate/heat_rate config; system observes and learns
-2. **Physics-based cold start** - Energy rating + zone dimensions + window area provide initial PID estimates before learning
-3. **Demand switch separate from PWM** - Single demand switch per zone (valve control) is distinct from PWM heater cycling
-4. **Central heat source control** - Aggregates zone demands, controls main heater/cooler with startup delay (valves open first)
-5. **Mode synchronization** - Switching one zone to heat/cool mode syncs all zones; OFF is independent
-6. **Learning data in HA storage** - Uses `.storage/` for persistence, not external JSON files
-7. **Single integration** - Replaces both HASmartThermostat and PyScript module
+1. **PID auto-tuned by default** - No manual kp/ki/kd config required; physics + learning handles it
+2. **Thermal rates auto-learned** - No manual cool_rate/heat_rate config; system observes and learns
+3. **Physics-based cold start** - Energy rating + zone dimensions + window area provide initial PID estimates before learning
+4. **Optional PID override** - Advanced users can disable auto-tuning and set fixed values per zone
+5. **Demand switch separate from PWM** - Single demand switch per zone (valve control) is distinct from PWM heater cycling
+6. **Central heat source control** - Aggregates zone demands, controls main heater/cooler with startup delay (valves open first)
+7. **Mode synchronization** - Switching one zone to heat/cool mode syncs all zones; OFF is independent
+8. **Learning data in HA storage** - Uses `.storage/` for persistence, not external JSON files
+9. **Single integration** - Replaces both HASmartThermostat and PyScript module
