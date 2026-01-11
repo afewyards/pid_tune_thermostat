@@ -387,30 +387,139 @@ custom_components/adaptive_thermostat/
 
 ## Testing Plan
 
-1. **Unit tests**
-   - PID controller with heating curves
-   - Thermal time constant calculations
-   - Adaptive adjustment rules
-   - Pre-heating timing calculations
+### 1. Unit Tests
 
-2. **Integration tests**
-   - Zone linking coordination
-   - Learning data persistence
-   - Sensor creation and updates
-   - Service calls
+**Physics module:**
+- Thermal time constant calculation from volume + energy rating
+- Initial PID estimates from heating type (floor vs radiator vs convector)
+- Heat loss estimation from area + windows + energy rating
+- PWM period calculation from heating type + thermal mass
 
-3. **Manual testing in HA**
-   - Install fork in test HA instance
-   - Configure 2-3 zones
-   - Verify sensors appear
-   - Trigger learning manually
-   - Test vacation mode
-   - Verify notifications
+**Adaptive learning:**
+- Overshoot/undershoot detection from temperature history
+- Settling time and oscillation counting
+- PID adjustment rules (high overshoot → reduce Kp, etc.)
+- Thermal rate learning (cooling/heating C/hour)
+- Setpoint change exclusion (events near schedule changes filtered)
 
-4. **Migration testing**
-   - Install alongside existing PyScript
-   - Compare recommended PID values
-   - Gradually migrate zones
+**Pre-heating:**
+- Time-to-target calculation from learned heat rate
+- Schedule lookahead for upcoming setpoint changes
+
+**Analytics:**
+- Duty cycle calculation
+- Power per m2 estimation
+- Heat output (kW) from flow + delta-T
+- Energy from volume meter delta
+- Flow rate derivation from volume changes
+- Cross-validation between flow sensor and volume meter
+
+**Central heat source controller:**
+- No zones demanding → heater OFF
+- One zone demands → startup delay timer starts
+- Startup delay expires → heater ON
+- Second zone demands during delay → no effect (timer continues)
+- All zones stop demanding → heater OFF immediately (no delay)
+- Zone demands during heater ON → no state change
+- Startup delay configurable (0 = immediate on)
+- Heater and cooler independent (can have different delays)
+
+**Mode synchronization:**
+- Zone switches HEAT → all other zones switch to HEAT
+- Zone switches COOL → all other zones switch to COOL
+- Zone switches OFF → only that zone turns off, others unchanged
+- Multiple zones OFF, one switches HEAT → all ON zones switch to HEAT
+- Sync disabled per-zone respects setting
+- Mode change during startup delay handled correctly
+
+**Demand switches:**
+- PID output > 0 → demand switch ON
+- PID output = 0 → demand switch OFF
+- Demand switch state change triggers central controller update
+- Multiple zones demanding simultaneously handled
+
+### 2. Integration Tests
+
+**Zone coordination:**
+- Mode synchronization (one zone to HEAT → all zones HEAT)
+- Zone linking delays (kitchen heating → delay living room)
+- Central heat source aggregation (any demand → heater ON)
+- Startup delay (valves open before heat source fires)
+
+**Sensor/switch creation:**
+- Demand switch per zone created and responds to PID output
+- All analytics sensors appear with correct values
+- Health sensor updates status correctly
+
+**Learning persistence:**
+- Learning data survives HA restart
+- Learned thermal rates stored and retrieved
+- PWM period adjustments persisted
+
+**Service calls:**
+- `run_learning` triggers analysis
+- `apply_recommended_pid` updates values
+- `set_vacation_mode` sets all zones to frost protection
+- `health_check` sends correct alerts
+
+### 3. Manual Testing in HA
+
+**Initial setup:**
+- Install fork in test HA instance
+- Configure 2-3 zones with different heating types
+- Verify all sensors appear in entity registry
+- Check initial PID/PWM values based on config
+
+**Cold start behavior:**
+- New zone with no history uses physics-based PID
+- PWM period matches heating type defaults
+- Pre-heating disabled until thermal rates learned
+
+**Learning cycle:**
+- Trigger manual learning, verify metrics calculated
+- Wait for daily learning (3:00 AM), check auto-updates
+- Verify learned thermal rates (cooling/heating C/hour)
+- Check PWM period adjusts based on observed cycling
+
+**Demand and heat source:**
+- Zone calls for heat → demand switch ON
+- First zone demand → startup delay → main heater ON
+- All zones satisfied → main heater OFF immediately
+- Mode sync: switch one zone to COOL, verify all follow
+
+**Optional sensors:**
+- Test with/without supply/return temps
+- Test with/without flow sensor
+- Test with/without volume meter
+- Test with/without GJ meter
+- Verify graceful degradation (features disabled, no errors)
+
+**Vacation mode:**
+- Activate vacation, verify all zones to frost protection
+- Confirm learning paused during vacation
+- Deactivate, verify zones resume normal operation
+
+**Notifications:**
+- Health alert triggered on short cycling
+- Weekly report delivered on schedule
+- Cost report includes actual vs estimated
+
+### 4. Migration Testing
+
+**Parallel operation:**
+- Install fork alongside existing HASmartThermostat + PyScript
+- Both systems observe same zones
+- Compare recommended PID values (should be similar)
+
+**Gradual migration:**
+- Migrate one zone to fork, others remain on original
+- Verify no conflicts between systems
+- Monitor for 1-2 weeks before migrating next zone
+
+**Validation:**
+- Compare duty cycles between systems
+- Compare learned metrics
+- Verify cost/energy calculations match
 
 ---
 
