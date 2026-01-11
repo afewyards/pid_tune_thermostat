@@ -126,6 +126,22 @@ degree_days:
   analysis_period_days: 7
 
 # =============================================================================
+# ADAPTIVE LEARNING SETTINGS
+# =============================================================================
+adaptive_learning:
+  # Hours to exclude events near setpoint changes
+  # Events within this buffer of a setpoint change are skipped to avoid
+  # misinterpreting temperature response to schedule changes as overshoot
+  setpoint_change_buffer_hours: 2
+
+  # Minimum events required after filtering for adaptive recommendations
+  min_events_after_filtering: 3
+
+  # Whether to attempt setpoint history retrieval from recorder
+  # If false or history unavailable, falls back to current setpoint only
+  use_setpoint_history: true
+
+# =============================================================================
 # HEALTH MONITORING
 # =============================================================================
 health:

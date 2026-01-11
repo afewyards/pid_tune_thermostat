@@ -531,6 +531,107 @@ async def get_temperature_history(entity_id, hours=168):
         log.error(f"Failed to get temperature history for {entity_id}: {e}")
         return []
 
+async def get_setpoint_history(climate_entity, hours=168):
+    """
+    Get historical setpoint values for a climate entity.
+
+    Queries Home Assistant recorder for the climate entity's temperature attribute.
+    Returns list of (timestamp, setpoint) tuples sorted chronologically.
+    """
+    try:
+        end_time = datetime.now()
+        start_time = end_time - timedelta(hours=hours)
+
+        state_list = await _fetch_state_history(hass, climate_entity, start_time, end_time)
+
+        if not state_list:
+            log.debug(f"No setpoint history found for {climate_entity}")
+            return []
+
+        setpoints = []
+        last_setpoint = None
+
+        for state_obj in state_list:
+            try:
+                # Get temperature attribute (setpoint) from climate entity
+                attrs = getattr(state_obj, 'attributes', {})
+                if attrs:
+                    sp = attrs.get('temperature')
+                    if sp is not None:
+                        sp = float(sp)
+                        # Only record when setpoint changes
+                        if sp != last_setpoint:
+                            setpoints.append((state_obj.last_changed, sp))
+                            last_setpoint = sp
+            except (ValueError, TypeError, AttributeError):
+                continue
+
+        log.debug(f"Retrieved {len(setpoints)} setpoint changes for {climate_entity}")
+        return setpoints
+
+    except Exception as e:
+        log.debug(f"Could not get setpoint history for {climate_entity}: {e}")
+        return []
+
+
+async def detect_setpoint_changes(climate_entity, hours=168):
+    """
+    Analyze if setpoint has varied over the analysis period.
+
+    Returns:
+        dict with:
+        - has_changes: bool - True if setpoint varied
+        - setpoints: list of (datetime, setpoint) tuples
+        - min_setpoint: float (if has_changes)
+        - max_setpoint: float (if has_changes)
+        - setpoint_range: float (if has_changes)
+    """
+    setpoints = await get_setpoint_history(climate_entity, hours)
+
+    if len(setpoints) <= 1:
+        return {
+            'has_changes': False,
+            'setpoints': setpoints,
+            'history_available': len(setpoints) > 0,
+            'constant_setpoint': setpoints[0][1] if setpoints else None
+        }
+
+    temps = [sp[1] for sp in setpoints]
+    return {
+        'has_changes': True,
+        'setpoints': setpoints,
+        'history_available': True,
+        'min_setpoint': min(temps),
+        'max_setpoint': max(temps),
+        'setpoint_range': max(temps) - min(temps)
+    }
+
+
+def get_setpoint_at_time(setpoints, target_time):
+    """
+    Find the setpoint that was active at a specific time.
+
+    Args:
+        setpoints: List of (datetime, setpoint) tuples from get_setpoint_history()
+        target_time: datetime to look up
+
+    Returns:
+        float: Setpoint at that time, or None if unavailable
+    """
+    if not setpoints:
+        return None
+
+    # Find the last setpoint change before target_time
+    active_setpoint = None
+    for change_time, setpoint in setpoints:
+        if change_time <= target_time:
+            active_setpoint = setpoint
+        else:
+            break
+
+    return active_setpoint
+
+
 async def analyze_heating_response(zone_id, zone_config, current_pid, hours=168):
     """
     Analyze temperature response to heating events for a zone.
@@ -591,16 +692,34 @@ async def analyze_heating_response(zone_id, zone_config, current_pid, hours=168)
     if not heating_events:
         return None
 
-    # Get setpoint (from climate entity or use typical value)
+    # Detect setpoint changes over the analysis period
+    setpoint_info = await detect_setpoint_changes(climate_entity, hours)
+    use_dynamic_setpoint = setpoint_info.get('has_changes', False)
+    setpoint_history = setpoint_info.get('setpoints', [])
+
+    if use_dynamic_setpoint:
+        log.info(f"Zone {zone_id}: Detected setpoint changes "
+                f"({setpoint_info['min_setpoint']:.1f}-{setpoint_info['max_setpoint']:.1f}°C, "
+                f"{len(setpoint_history)} changes)")
+
+    # Fallback: Get current setpoint if no history available
     try:
-        setpoint = float(state.get(f"{climate_entity}.temperature") or
+        current_setpoint = float(state.get(f"{climate_entity}.temperature") or
                         state.getattr(climate_entity).get('temperature', 21))
     except:
-        setpoint = 21.0
+        current_setpoint = 21.0
 
     # Get tolerance from current PID config
     hot_tolerance = current_pid.get('hot_tolerance', 0.3)
     cold_tolerance = current_pid.get('cold_tolerance', 0.3)
+
+    # Load adaptive learning config for buffer hours
+    try:
+        constants = load_constants_config()
+        adaptive_config = constants.get('adaptive_learning', {})
+        setpoint_change_buffer_hours = adaptive_config.get('setpoint_change_buffer_hours', 2)
+    except:
+        setpoint_change_buffer_hours = 2
 
     # Analyze each heating event
     overshoots = []
@@ -608,41 +727,66 @@ async def analyze_heating_response(zone_id, zone_config, current_pid, hours=168)
     settling_times = []
     oscillation_counts = []
     rise_times = []
+    excluded_events = 0
 
     for event in heating_events[-20:]:  # Analyze last 20 events max
+        event_start = event['start']
         event_end = event['end']
         analysis_window_end = event_end + timedelta(hours=2)  # Look 2 hours after heating stops
+
+        # Determine setpoint for this event
+        if use_dynamic_setpoint and setpoint_history:
+            # Get setpoint that was active when heating started
+            event_setpoint = get_setpoint_at_time(setpoint_history, event_start)
+
+            if event_setpoint is None:
+                # Fallback to current setpoint
+                event_setpoint = current_setpoint
+
+            # Check if this event is near a setpoint change (within buffer)
+            near_change = False
+            for change_time, _ in setpoint_history:
+                time_diff_hours = abs((event_start - change_time).total_seconds() / 3600)
+                if time_diff_hours < setpoint_change_buffer_hours:
+                    near_change = True
+                    break
+
+            if near_change:
+                excluded_events += 1
+                continue  # Skip this event - too close to setpoint change
+        else:
+            event_setpoint = current_setpoint
 
         # Get temperature data for this event
         event_temps = [
             t for t in temp_data
-            if event['start'] <= t['time'] <= analysis_window_end
+            if event_start <= t['time'] <= analysis_window_end
         ]
 
         if len(event_temps) < 5:
             continue
 
-        # Find max temperature (potential overshoot)
+        # Find max temperature (potential overshoot) - using event-specific setpoint
         temps_after_heating = [t for t in event_temps if t['time'] >= event_end]
         if temps_after_heating:
             max_temp = max([t['temp'] for t in temps_after_heating])
-            overshoot = max(0, max_temp - setpoint - hot_tolerance)
+            overshoot = max(0, max_temp - event_setpoint - hot_tolerance)
             if overshoot > 0:
                 overshoots.append(overshoot)
 
         # Find min temperature before heating kicked in
-        temps_before_heating = [t for t in event_temps if t['time'] <= event['start']]
+        temps_before_heating = [t for t in event_temps if t['time'] <= event_start]
         if temps_before_heating:
             min_temp = min([t['temp'] for t in temps_before_heating])
-            undershoot = max(0, setpoint - cold_tolerance - min_temp)
+            undershoot = max(0, event_setpoint - cold_tolerance - min_temp)
             if undershoot > 0:
                 undershoots.append(undershoot)
 
         # Calculate rise time (time to reach setpoint from heating start)
         reached_setpoint = False
         for t in event_temps:
-            if t['time'] >= event['start'] and t['temp'] >= setpoint - cold_tolerance:
-                rise_time = (t['time'] - event['start']).total_seconds() / 60
+            if t['time'] >= event_start and t['temp'] >= event_setpoint - cold_tolerance:
+                rise_time = (t['time'] - event_start).total_seconds() / 60
                 rise_times.append(rise_time)
                 reached_setpoint = True
                 break
@@ -650,9 +794,9 @@ async def analyze_heating_response(zone_id, zone_config, current_pid, hours=168)
         # Count oscillations (setpoint crossings after heating stops)
         if temps_after_heating and len(temps_after_heating) > 3:
             crossings = 0
-            above_setpoint = temps_after_heating[0]['temp'] > setpoint
+            above_setpoint = temps_after_heating[0]['temp'] > event_setpoint
             for t in temps_after_heating[1:]:
-                currently_above = t['temp'] > setpoint
+                currently_above = t['temp'] > event_setpoint
                 if currently_above != above_setpoint:
                     crossings += 1
                     above_setpoint = currently_above
@@ -662,12 +806,12 @@ async def analyze_heating_response(zone_id, zone_config, current_pid, hours=168)
         if temps_after_heating:
             settled_time = None
             for i, t in enumerate(temps_after_heating):
-                in_tolerance = (setpoint - cold_tolerance) <= t['temp'] <= (setpoint + hot_tolerance)
+                in_tolerance = (event_setpoint - cold_tolerance) <= t['temp'] <= (event_setpoint + hot_tolerance)
                 if in_tolerance:
                     # Check if it stays in tolerance for remaining samples
                     remaining = temps_after_heating[i:]
                     settled_checks = [
-                        (setpoint - cold_tolerance) <= rt['temp'] <= (setpoint + hot_tolerance)
+                        (event_setpoint - cold_tolerance) <= rt['temp'] <= (event_setpoint + hot_tolerance)
                         for rt in remaining[:10]  # Check next 10 samples
                     ]
                     all_settled = all(settled_checks)
@@ -681,6 +825,12 @@ async def analyze_heating_response(zone_id, zone_config, current_pid, hours=168)
                     settling_times.append(settling_time)
 
     # Calculate averages
+    analyzed_count = max(len(overshoots), len(settling_times))
+
+    # Log if events were excluded due to setpoint changes
+    if excluded_events > 0:
+        log.info(f"Zone {zone_id}: Excluded {excluded_events} events near setpoint changes")
+
     result = {
         'overshoot': round(sum(overshoots) / len(overshoots), 2) if overshoots else 0,
         'undershoot': round(sum(undershoots) / len(undershoots), 2) if undershoots else 0,
@@ -688,8 +838,11 @@ async def analyze_heating_response(zone_id, zone_config, current_pid, hours=168)
         'oscillation_count': round(sum(oscillation_counts) / len(oscillation_counts), 1) if oscillation_counts else 0,
         'rise_time': round(sum(rise_times) / len(rise_times), 1) if rise_times else 0,
         'response_events': len(heating_events),
-        'analyzed_events': len(overshoots) + len(settling_times),
-        'setpoint': setpoint,
+        'analyzed_events': analyzed_count,
+        'excluded_events': excluded_events,
+        'dynamic_setpoint_detected': use_dynamic_setpoint,
+        'setpoint_range': setpoint_info.get('setpoint_range', 0) if use_dynamic_setpoint else 0,
+        'setpoint': current_setpoint if not use_dynamic_setpoint else None,
         'timestamp': datetime.now().isoformat()
     }
 
