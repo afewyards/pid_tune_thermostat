@@ -45,6 +45,8 @@ Fork HASmartThermostat to create an integrated adaptive heating controller that 
 - [ ] Output entity (single demand switch per zone for valve control)
 - [ ] Central heat source controller (aggregates zone demand, controls main heater/cooler with optional delay)
 - [ ] Mode synchronization (switching one zone to heat/cool syncs all zones, OFF is independent)
+- [ ] Heating type per zone (floor_hydronic, radiator, convector, etc.) for response characteristics
+- [ ] PWM period auto-tuning based on thermal response and heating type
 
 ---
 
@@ -117,6 +119,12 @@ custom_components/adaptive_thermostat/
      - `ceiling_height`: auto-calculate volume (area × height)
      - `window_area_m2`: affects heat loss estimate
      - `window_orientation`: solar gain factor (south > west > east > north)
+     - `heating_type`: response characteristics lookup
+       - floor_hydronic: tau=2-3h, PWM=30-60min, conservative PID
+       - floor_electric: tau=30-60min, PWM=15-30min, conservative PID
+       - radiator: tau=15-30min, PWM=10-20min, moderate PID
+       - convector: tau=5-15min, PWM=5-10min, aggressive PID
+       - ceiling: tau=1-2h, PWM=20-40min, conservative PID
    - **System inputs:**
      - `house_energy_rating`: baseline heat loss coefficient (A+++ = low, G = high)
    - **Estimated heat loss model:**
@@ -128,6 +136,12 @@ custom_components/adaptive_thermostat/
      - Average over multiple cycles, store in learning data
      - Validate learned rates against physics estimate
      - Use learned rates for pre-heating timing and physics-based PID
+   - **PWM auto-tuning:**
+     - Initial PWM = f(heating_type, volume, energy_rating)
+     - Refine based on observed behavior:
+       - Short cycling detected → increase PWM period
+       - Excessive oscillations → decrease PWM period
+     - Track valve cycle count for wear optimization
 
 6. **Create `adaptive/zone_rules.py`**
    - Port zone-specific adjustment logic
@@ -287,7 +301,13 @@ custom_components/adaptive_thermostat/
         window_area_m2: 4.0  # optional - affects heat loss calculations
         window_orientation: south  # optional - north/east/south/west for solar gain
         zone_type: ground_floor  # kitchen, bathroom, bedroom, etc.
+        heating_type: floor_hydronic  # floor_hydronic, floor_electric, radiator, convector, ceiling
         # NOTE: cool_rate and heat_rate are AUTO-LEARNED, not configured
+
+        # PWM settings
+        pwm_period: auto  # auto-tuned, or fixed value in seconds
+        min_pwm_period: 300  # 5 min minimum (protects actuators)
+        max_pwm_period: 3600  # 60 min maximum
 
         # Output switch (for zone valve/actuator)
         demand_switch: switch.valve_gf  # optional - ON when zone needs heat/cool
