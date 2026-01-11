@@ -48,6 +48,7 @@ Fork HASmartThermostat to create an integrated adaptive heating controller that 
 - [ ] Mode synchronization (switching one zone to heat/cool syncs all zones, OFF is independent)
 - [ ] Heating type per zone (floor_hydronic, radiator, convector, etc.) for response characteristics
 - [ ] PWM period auto-tuning based on thermal response and heating type
+- [ ] Solar gain compensation (auto-learn sun impact per zone, season-aware, uses weather forecast)
 
 ---
 
@@ -70,6 +71,9 @@ custom_components/adaptive_thermostat/
 ├── scheduling/
 │   ├── __init__.py
 │   └── scheduler.py            # Built-in schedule with presets
+├── solar/
+│   ├── __init__.py
+│   └── solar_gain.py           # Solar gain learning and compensation
 ├── analytics/
 │   ├── __init__.py
 │   ├── performance.py          # Duty cycle, power, cycle time
@@ -250,7 +254,23 @@ custom_components/adaptive_thermostat/
     - If zone A is heating, delay zone B heating by X minutes
     - Configuration: `linked_zones: [climate.kitchen, climate.living_room]`
 
-18. **Add vacation mode**
+18. **Create `solar/solar_gain.py`**
+    - Auto-learn solar gain per zone based on:
+      - `window_orientation`: when sun hits (east=morning, south=midday, west=afternoon)
+      - `window_area_m2`: relative impact
+      - `sun.sun` entity: elevation and azimuth
+      - Season/month: sun angle changes throughout year
+    - Learn by comparing sunny vs cloudy days at same time
+    - Measure unexpected temp rise not from heating = solar gain
+    - Store learned data segmented by:
+      - Window orientation
+      - Season (or sun elevation range)
+      - Time of day
+    - Use weather forecast to predict solar gain
+    - Reduce heating output or setpoint during expected sunny periods
+    - Delay pre-heating when sun will help
+
+19. **Add vacation mode**
     - New preset mode or separate toggle
     - Sets all zones to frost protection (configurable, default 12C)
     - Pauses adaptive learning
@@ -259,7 +279,7 @@ custom_components/adaptive_thermostat/
 
 ### Phase 5: Services and Notifications
 
-19. **Extend services.yaml**
+20. **Extend services.yaml**
     ```yaml
     adaptive_thermostat.run_learning:
       description: Trigger adaptive learning analysis
@@ -283,7 +303,7 @@ custom_components/adaptive_thermostat/
         target_temp: float (default 12)
     ```
 
-20. **Add notification integration**
+21. **Add notification integration**
     - Configure notify service in integration options
     - Health alerts: time-sensitive interruption
     - Reports: passive interruption
@@ -291,7 +311,7 @@ custom_components/adaptive_thermostat/
 
 ### Phase 6: Configuration Schema
 
-21. **Extend configuration options**
+22. **Extend configuration options**
     ```yaml
     climate:
       - platform: adaptive_thermostat
@@ -375,6 +395,10 @@ custom_components/adaptive_thermostat/
       house_energy_rating: A+++  # A+++, A++, A+, A, B, C, D, E, F, G
       # Used for initial PID estimates before learning data available
 
+      # Solar gain compensation
+      weather_entity: weather.home  # for forecast (sunny/cloudy)
+      # sun.sun entity used automatically for elevation/azimuth
+
       # System heat output sensors - all optional
       supply_temp_sensor: sensor.heating_supply  # optional - enables heat output (kW) calc
       return_temp_sensor: sensor.heating_return  # optional - enables delta-T monitoring
@@ -450,6 +474,14 @@ custom_components/adaptive_thermostat/
 - Calculate preheat start time
 - Respect preheat_max_hours cap
 - Skip if already at target
+
+**Solar gain:**
+- Calculate sun window per orientation (east=6-11, south=10-15, west=14-19)
+- Adjust for season (sun elevation affects gain)
+- Learn gain from sunny vs cloudy comparison
+- Predict gain from weather forecast
+- Reduce heating during expected solar gain
+- Delay pre-heating when sun will help
 
 **Analytics:**
 - Duty cycle calculation
