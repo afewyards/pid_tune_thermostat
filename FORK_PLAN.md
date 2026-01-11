@@ -112,11 +112,21 @@ custom_components/adaptive_thermostat/
 5. **Create `adaptive/physics.py`**
    - Port `calculate_thermal_time_constant()`
    - Port `calculate_recommended_pid()` (Ziegler-Nichols)
-   - Zone configuration: area_m2, volume_m3 (static inputs)
+   - **Zone inputs:**
+     - `area_m2`: floor area
+     - `ceiling_height`: auto-calculate volume (area × height)
+     - `window_area_m2`: affects heat loss estimate
+     - `window_orientation`: solar gain factor (south > west > east > north)
+   - **System inputs:**
+     - `house_energy_rating`: baseline heat loss coefficient (A+++ = low, G = high)
+   - **Estimated heat loss model:**
+     - `base_loss = f(energy_rating, area, volume, window_area)`
+     - Used for initial PID values before learning
    - **Auto-learn thermal rates:**
      - `cool_rate_c_per_hour`: measure temp drop when heating OFF
      - `heat_rate_c_per_hour`: measure temp rise when heating ON
      - Average over multiple cycles, store in learning data
+     - Validate learned rates against physics estimate
      - Use learned rates for pre-heating timing and physics-based PID
 
 6. **Create `adaptive/zone_rules.py`**
@@ -273,7 +283,9 @@ custom_components/adaptive_thermostat/
 
         # Zone properties (for physics-based tuning)
         area_m2: 28
-        volume_m3: 70  # or auto-calculate from area + ceiling_height
+        ceiling_height: 2.5  # meters - volume auto-calculated (area × height)
+        window_area_m2: 4.0  # optional - affects heat loss calculations
+        window_orientation: south  # optional - north/east/south/west for solar gain
         zone_type: ground_floor  # kitchen, bathroom, bedroom, etc.
         # NOTE: cool_rate and heat_rate are AUTO-LEARNED, not configured
 
@@ -314,6 +326,10 @@ custom_components/adaptive_thermostat/
 
     # System-level configuration (separate from per-zone)
     adaptive_thermostat:
+      # House properties (for physics-based tuning baseline)
+      house_energy_rating: A+++  # A+++, A++, A+, A, B, C, D, E, F, G
+      # Used for initial PID estimates before learning data available
+
       # Central heat source control
       main_heater_switch: switch.boiler  # or heat pump - ON when any zone needs heat
       main_cooler_switch: switch.ac_compressor  # optional - ON when any zone needs cooling
@@ -396,8 +412,9 @@ custom_components/adaptive_thermostat/
 ## Key Design Decisions
 
 1. **Thermal rates auto-learned** - No manual cool_rate/heat_rate config; system observes and learns
-2. **Demand switch separate from PWM** - Single demand switch per zone (valve control) is distinct from PWM heater cycling
-3. **Central heat source control** - Aggregates zone demands, controls main heater/cooler with startup delay (valves open first)
-4. **Mode synchronization** - Switching one zone to heat/cool mode syncs all zones; OFF is independent
-5. **Learning data in HA storage** - Uses `.storage/` for persistence, not external JSON files
-6. **Single integration** - Replaces both HASmartThermostat and PyScript module
+2. **Physics-based cold start** - Energy rating + zone dimensions + window area provide initial PID estimates before learning
+3. **Demand switch separate from PWM** - Single demand switch per zone (valve control) is distinct from PWM heater cycling
+4. **Central heat source control** - Aggregates zone demands, controls main heater/cooler with startup delay (valves open first)
+5. **Mode synchronization** - Switching one zone to heat/cool mode syncs all zones; OFF is independent
+6. **Learning data in HA storage** - Uses `.storage/` for persistence, not external JSON files
+7. **Single integration** - Replaces both HASmartThermostat and PyScript module
