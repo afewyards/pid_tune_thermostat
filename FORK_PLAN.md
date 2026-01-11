@@ -37,7 +37,8 @@ Fork HASmartThermostat to create an integrated adaptive heating controller that 
 - [ ] Weekly reports via notification
 
 ### New Features
-- [ ] Pre-heating algorithm
+- [ ] Built-in scheduling with presets (wake, away, home, sleep)
+- [ ] Pre-heating algorithm (uses built-in schedule to know upcoming changes)
 - [ ] Heating curves (outdoor temp -> output adjustment)
 - [ ] Zone linking (coordinate thermally connected zones)
 - [ ] Vacation mode
@@ -66,6 +67,9 @@ custom_components/adaptive_thermostat/
 │   ├── physics.py              # Thermal time constant, Ziegler-Nichols
 │   ├── zone_rules.py           # Zone-specific adjustment rules
 │   └── preheating.py           # Pre-heating algorithm
+├── scheduling/
+│   ├── __init__.py
+│   └── scheduler.py            # Built-in schedule with presets
 ├── analytics/
 │   ├── __init__.py
 │   ├── performance.py          # Duty cycle, power, cycle time
@@ -220,26 +224,33 @@ custom_components/adaptive_thermostat/
 
 ### Phase 4: New Features
 
-14. **Create `adaptive/preheating.py`**
-    - Calculate time-to-target based on thermal time constant
-    - Monitor schedule entities for upcoming setpoint changes
-    - Trigger early heating: `preheat_hours = (target - current) / heat_rate`
-    - Integrate with HA scheduler or input_datetime helpers
-    - Add `preheat_enabled` config option per zone
+14. **Create `scheduling/` module**
+    - Built-in schedule per zone with presets (wake, away, home, sleep)
+    - Weekday/weekend schedules + per-day overrides
+    - Query "next transition" for pre-heating
+    - Apply setpoint changes automatically at scheduled times
+    - Expose schedule via HA calendar entity (optional)
 
-15. **Add heating curves to PID controller**
+15. **Create `adaptive/preheating.py`**
+    - Query built-in schedule for next setpoint change
+    - Calculate time-to-target based on learned heat rate
+    - Trigger early heating: `preheat_hours = (target - current) / heat_rate`
+    - Cap at `preheat_max_hours` to avoid excessive early starts
+    - Skip if zone is already at or above target
+
+16. **Add heating curves to PID controller**
     - Modify `pid_controller/__init__.py`
     - Add `heating_curve` parameter: outdoor temp -> output multiplier
     - Example: at 10C outdoor, multiply output by 0.7
     - Configurable curve points in YAML
 
-16. **Add zone linking to coordinator**
+17. **Add zone linking to coordinator**
     - Track thermally connected zones (e.g., kitchen + living room)
     - Coordinate heating cycles to prevent oscillation
     - If zone A is heating, delay zone B heating by X minutes
     - Configuration: `linked_zones: [climate.kitchen, climate.living_room]`
 
-17. **Add vacation mode**
+18. **Add vacation mode**
     - New preset mode or separate toggle
     - Sets all zones to frost protection (configurable, default 12C)
     - Pauses adaptive learning
@@ -248,7 +259,7 @@ custom_components/adaptive_thermostat/
 
 ### Phase 5: Services and Notifications
 
-18. **Extend services.yaml**
+19. **Extend services.yaml**
     ```yaml
     adaptive_thermostat.run_learning:
       description: Trigger adaptive learning analysis
@@ -272,7 +283,7 @@ custom_components/adaptive_thermostat/
         target_temp: float (default 12)
     ```
 
-19. **Add notification integration**
+20. **Add notification integration**
     - Configure notify service in integration options
     - Health alerts: time-sensitive interruption
     - Reports: passive interruption
@@ -280,7 +291,7 @@ custom_components/adaptive_thermostat/
 
 ### Phase 6: Configuration Schema
 
-20. **Extend configuration options**
+21. **Extend configuration options**
     ```yaml
     climate:
       - platform: adaptive_thermostat
@@ -311,9 +322,32 @@ custom_components/adaptive_thermostat/
         learning_window_days: 7
         min_learning_events: 3
 
-        # Pre-heating
+        # Built-in schedule with presets
+        presets:
+          wake: 21
+          away: 17
+          home: 21
+          sleep: 19
+        schedule:
+          weekday:  # mon-fri
+            - time: "06:30"
+              preset: wake
+            - time: "08:30"
+              preset: away
+            - time: "17:00"
+              preset: home
+            - time: "22:30"
+              preset: sleep
+          weekend:  # sat-sun
+            - time: "08:00"
+              preset: wake
+            - time: "23:00"
+              preset: sleep
+          # Can also specify per day: monday, tuesday, etc.
+
+        # Pre-heating (uses built-in schedule)
         preheat_enabled: true
-        schedule_entity: schedule.heating_gf  # or input_datetime
+        preheat_max_hours: 3  # don't start more than 3h early
 
         # Health monitoring
         health_alerts_enabled: true
@@ -403,9 +437,19 @@ custom_components/adaptive_thermostat/
 - Thermal rate learning (cooling/heating C/hour)
 - Setpoint change exclusion (events near schedule changes filtered)
 
+**Scheduling:**
+- Parse weekday/weekend/per-day schedules
+- Get current preset for given time
+- Get next transition time and target preset
+- Handle midnight rollover
+- Handle schedule with no transitions (constant setpoint)
+
 **Pre-heating:**
 - Time-to-target calculation from learned heat rate
-- Schedule lookahead for upcoming setpoint changes
+- Query scheduler for next setpoint change
+- Calculate preheat start time
+- Respect preheat_max_hours cap
+- Skip if already at target
 
 **Analytics:**
 - Duty cycle calculation
