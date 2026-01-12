@@ -78,6 +78,7 @@ custom_components/adaptive_thermostat/
 ├── services.yaml               # Extended services
 ├── sensor.py                   # NEW: Sensor platform for analytics
 ├── switch.py                   # NEW: Zone demand switches + central controller
+├── number.py                   # NEW: Configurable parameters (learning window)
 ├── manifest.json
 └── translations/
     └── en.json
@@ -167,6 +168,8 @@ custom_components/adaptive_thermostat/
      - `sensor.heating_system_health`
      - `sensor.heating_total_power`
      - `sensor.heating_weekly_cost`
+   - System number entities:
+     - `number.adaptive_thermostat_learning_window` (default 7 days, range 3-14)
 
 9. **Create `analytics/performance.py`**
    - Port duty cycle calculation
@@ -326,7 +329,6 @@ custom_components/adaptive_thermostat/
 
         # Adaptive learning
         learning_enabled: true
-        learning_window_days: 7
         min_learning_events: 3
 
         # Built-in schedule with presets
@@ -382,6 +384,9 @@ custom_components/adaptive_thermostat/
       house_energy_rating: A+++  # A+++, A++, A+, A, B, C, D, E, F, G
       # Used for initial PID estimates before learning data available
 
+      # Adaptive learning
+      learning_window_days: 7  # initial default, adjustable via number.adaptive_thermostat_learning_window
+
       # Solar gain compensation
       weather_entity: weather.home  # for forecast (sunny/cloudy)
       # sun.sun entity used automatically for elevation/azimuth
@@ -424,6 +429,7 @@ custom_components/adaptive_thermostat/
 | `pid_controller/__init__.py` | Modify | Remove PIDAutotune, add heating curve |
 | `coordinator.py` | Create | Cross-zone coordination |
 | `sensor.py` | Create | Analytics sensors |
+| `number.py` | Create | Configurable parameters (learning window) |
 | `switch.py` | Create | Heating/cooling demand output switches |
 | `adaptive/*.py` | Create | Learning, physics, preheating |
 | `analytics/*.py` | Create | Performance, energy, heat output, health |
