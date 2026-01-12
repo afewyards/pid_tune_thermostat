@@ -45,6 +45,7 @@ Fork HASmartThermostat to create an integrated adaptive heating controller that 
 - [ ] Heating type per zone (floor_hydronic, radiator, convector, etc.) for response characteristics
 - [ ] PWM period auto-tuning based on thermal response and heating type
 - [ ] Solar gain compensation (auto-learn sun impact per zone, season-aware, uses weather forecast)
+- [ ] Contact sensors (pause/frost on window/door open, exclude from learning)
 
 ---
 
@@ -327,6 +328,14 @@ custom_components/adaptive_thermostat/
         # Output switch (for zone valve/actuator)
         demand_switch: switch.valve_gf  # optional - ON when zone needs heat/cool
 
+        # Contact sensors (windows/doors to outside)
+        contact_sensors:
+          - binary_sensor.gf_window
+          - binary_sensor.gf_door_garden
+        contact_action: pause  # pause, frost_protection, or none (learning exclusion only)
+        contact_delay: 120  # seconds before action triggers
+        contact_learning_grace: 300  # seconds after close to exclude from learning (thermal stabilization)
+
         # Adaptive learning
         learning_enabled: true
         min_learning_events: 3
@@ -475,6 +484,15 @@ custom_components/adaptive_thermostat/
 - Predict gain from weather forecast
 - Reduce heating during expected solar gain
 - Delay pre-heating when sun will help
+
+**Contact sensors:**
+- Window opens → delay timer starts
+- Delay expires → action triggers (pause or frost_protection)
+- Window closes before delay → no action, timer cancelled
+- Window closes after action → heating resumes immediately
+- Multiple sensors: any open = open state
+- action=none → no heating change, only excludes from learning
+- Learning excludes: open period + grace period after close
 
 **Analytics:**
 - Duty cycle calculation
