@@ -33,8 +33,7 @@ Fork HASmartThermostat to create an integrated adaptive heating controller that 
 - [ ] Weekly reports via notification
 
 ### New Features
-- [ ] Built-in scheduling with presets (wake, away, home, sleep)
-- [ ] Pre-heating algorithm (uses built-in schedule to know upcoming changes)
+- [ ] Night setback with solar recovery (auto-lower at night, let sun warm up in morning)
 - [ ] Heating curves (outdoor temp -> output adjustment)
 - [ ] Zone linking (coordinate thermally connected zones)
 - [ ] Vacation mode
@@ -63,10 +62,7 @@ custom_components/adaptive_thermostat/
 │   ├── __init__.py
 │   ├── learning.py             # Adaptive learning engine (from PyScript)
 │   ├── physics.py              # Thermal time constant, Ziegler-Nichols
-│   └── preheating.py           # Pre-heating algorithm
-├── scheduling/
-│   ├── __init__.py
-│   └── scheduler.py            # Built-in schedule with presets
+│   └── night_setback.py        # Night setback with solar recovery
 ├── solar/
 │   ├── __init__.py
 │   └── solar_gain.py           # Solar gain learning and compensation
@@ -219,33 +215,26 @@ custom_components/adaptive_thermostat/
 
 ### Phase 4: New Features
 
-14. **Create `scheduling/` module**
-    - Built-in schedule per zone with presets (wake, away, home, sleep)
-    - Weekday/weekend schedules + per-day overrides
-    - Query "next transition" for pre-heating
-    - Apply setpoint changes automatically at scheduled times
-    - Expose schedule via HA calendar entity (optional)
+14. **Create `adaptive/night_setback.py`**
+    - Automatically lower setpoint by delta during night hours
+    - Night period: configurable start/end times or sunset/sunrise
+    - Solar recovery: delay morning heating, let sun bring temp up
+    - Query solar gain prediction for recovery decision
+    - Fall back to active heating if cloudy forecast
 
-15. **Create `adaptive/preheating.py`**
-    - Query built-in schedule for next setpoint change
-    - Calculate time-to-target based on learned heat rate
-    - Trigger early heating: `preheat_hours = (target - current) / heat_rate`
-    - Cap at `preheat_max_hours` to avoid excessive early starts
-    - Skip if zone is already at or above target
-
-16. **Add heating curves to PID controller**
+15. **Add heating curves to PID controller**
     - Modify `pid_controller/__init__.py`
     - Add `heating_curve` parameter: outdoor temp -> output multiplier
     - Example: at 10C outdoor, multiply output by 0.7
     - Configurable curve points in YAML
 
-17. **Add zone linking to coordinator**
+16. **Add zone linking to coordinator**
     - Track thermally connected zones (e.g., kitchen + living room)
     - Coordinate heating cycles to prevent oscillation
     - If zone A is heating, delay zone B heating by X minutes
     - Configuration: `linked_zones: [climate.kitchen, climate.living_room]`
 
-18. **Create `solar/solar_gain.py`**
+17. **Create `solar/solar_gain.py`**
     - Auto-learn solar gain per zone based on:
       - `window_orientation`: when sun hits (east=morning, south=midday, west=afternoon)
       - `window_area_m2`: relative impact
@@ -259,9 +248,9 @@ custom_components/adaptive_thermostat/
       - Time of day
     - Use weather forecast to predict solar gain
     - Reduce heating output or setpoint during expected sunny periods
-    - Delay pre-heating when sun will help
+    - Delay morning heating when sun will help (solar recovery)
 
-19. **Add vacation mode**
+18. **Add vacation mode**
     - New preset mode or separate toggle
     - Sets all zones to frost protection (configurable, default 12C)
     - Pauses adaptive learning
@@ -270,7 +259,7 @@ custom_components/adaptive_thermostat/
 
 ### Phase 5: Services and Notifications
 
-20. **Extend services.yaml**
+19. **Extend services.yaml**
     ```yaml
     adaptive_thermostat.run_learning:
       description: Trigger adaptive learning analysis
@@ -294,7 +283,7 @@ custom_components/adaptive_thermostat/
         target_temp: float (default 12)
     ```
 
-21. **Add notification integration**
+20. **Add notification integration**
     - Configure notify service in integration options
     - Health alerts: time-sensitive interruption
     - Reports: passive interruption
@@ -302,7 +291,7 @@ custom_components/adaptive_thermostat/
 
 ### Phase 6: Configuration Schema
 
-22. **Extend configuration options**
+21. **Extend configuration options**
     ```yaml
     climate:
       - platform: adaptive_thermostat
@@ -340,32 +329,14 @@ custom_components/adaptive_thermostat/
         learning_enabled: true
         min_learning_events: 3
 
-        # Built-in schedule with presets
-        presets:
-          wake: 21
-          away: 17
-          home: 21
-          sleep: 19
-        schedule:
-          weekday:  # mon-fri
-            - time: "06:30"
-              preset: wake
-            - time: "08:30"
-              preset: away
-            - time: "17:00"
-              preset: home
-            - time: "22:30"
-              preset: sleep
-          weekend:  # sat-sun
-            - time: "08:00"
-              preset: wake
-            - time: "23:00"
-              preset: sleep
-          # Can also specify per day: monday, tuesday, etc.
-
-        # Pre-heating (uses built-in schedule)
-        preheat_enabled: true
-        preheat_max_hours: 3  # don't start more than 3h early
+        # Night setback with solar recovery
+        night_setback:
+          enabled: true  # default on
+          delta: 2  # lower setpoint by 2°C at night
+          start: "22:00"  # or "sunset"
+          # end time determined by window_orientation (east=early, south=midday, west=late)
+          solar_recovery: true  # let sun warm up instead of active heating
+          recovery_deadline: "09:00"  # resume active heating by this time regardless of sun
 
         # Health monitoring
         health_alerts_enabled: true
@@ -440,7 +411,7 @@ custom_components/adaptive_thermostat/
 | `sensor.py` | Create | Analytics sensors |
 | `number.py` | Create | Configurable parameters (learning window) |
 | `switch.py` | Create | Heating/cooling demand output switches |
-| `adaptive/*.py` | Create | Learning, physics, preheating |
+| `adaptive/*.py` | Create | Learning, physics, night setback |
 | `analytics/*.py` | Create | Performance, energy, heat output, health |
 | `services.yaml` | Modify | Add new services |
 
@@ -463,19 +434,17 @@ custom_components/adaptive_thermostat/
 - Thermal rate learning (cooling/heating C/hour)
 - Setpoint change exclusion (events near schedule changes filtered)
 
-**Scheduling:**
-- Parse weekday/weekend/per-day schedules
-- Get current preset for given time
-- Get next transition time and target preset
-- Handle midnight rollover
-- Handle schedule with no transitions (constant setpoint)
-
-**Pre-heating:**
-- Time-to-target calculation from learned heat rate
-- Query scheduler for next setpoint change
-- Calculate preheat start time
-- Respect preheat_max_hours cap
-- Skip if already at target
+**Night setback:**
+- Night start: fixed time or sunset
+- Night end: derived from window_orientation (east=early, south=midday, west=late)
+- Setpoint reduced by delta during night
+- Solar recovery: check forecast at expected sun time
+- Sunny forecast → delay heating, let sun warm up
+- Cloudy forecast → resume active heating
+- North-facing or no windows → immediate recovery at sunrise (no solar benefit)
+- Recovery deadline: resume active heating by this time regardless
+- Deadline before sun window → deadline wins
+- Disabled zones excluded from night setback
 
 **Solar gain:**
 - Calculate sun window per orientation (east=6-11, south=10-15, west=14-19)
@@ -483,7 +452,7 @@ custom_components/adaptive_thermostat/
 - Learn gain from sunny vs cloudy comparison
 - Predict gain from weather forecast
 - Reduce heating during expected solar gain
-- Delay pre-heating when sun will help
+- Delay morning heating when sun will help (solar recovery)
 
 **Contact sensors:**
 - Window opens → delay timer starts
