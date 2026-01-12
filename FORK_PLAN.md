@@ -7,8 +7,6 @@ Fork HASmartThermostat to create an integrated adaptive heating controller that 
 - Your PyScript system's analytics and adaptive learning
 - New features: pre-heating, heating curves, zone linking, vacation mode
 
-**Repository name suggestion:** `ha-adaptive-thermostat` or `HASmartThermostat-Adaptive`
-
 ---
 
 ## Feature Summary
@@ -21,7 +19,6 @@ Fork HASmartThermostat to create an integrated adaptive heating controller that 
 - [x] Hot/cold tolerance bands
 - [x] Sensor stall detection
 - [x] Min cycle duration
-- [x] `set_pid_gain`, `set_preset_temp`, `clear_integral` services
 
 ### Remove from HASmartThermostat
 - [ ] Autotune (PIDAutotune class) - replaced by adaptive learning
@@ -29,7 +26,6 @@ Fork HASmartThermostat to create an integrated adaptive heating controller that 
 ### Migrate from PyScript
 - [ ] Adaptive PID learning (7-day window, overshoot/settling/oscillation analysis)
 - [ ] Physics-based PID baseline (thermal time constant + Ziegler-Nichols)
-- [ ] Zone-specific adjustments (kitchen/bathroom/bedroom rules)
 - [ ] Health monitoring (short cycles, high power, sensor checks)
 - [ ] Performance sensors (duty_cycle, power_m2, cycle_time)
 - [ ] Energy/cost tracking (GJ meter + duty-cycle estimation)
@@ -66,7 +62,6 @@ custom_components/adaptive_thermostat/
 │   ├── __init__.py
 │   ├── learning.py             # Adaptive learning engine (from PyScript)
 │   ├── physics.py              # Thermal time constant, Ziegler-Nichols
-│   ├── zone_rules.py           # Zone-specific adjustment rules
 │   └── preheating.py           # Pre-heating algorithm
 ├── scheduling/
 │   ├── __init__.py
@@ -82,7 +77,7 @@ custom_components/adaptive_thermostat/
 │   └── health.py               # Health monitoring
 ├── services.yaml               # Extended services
 ├── sensor.py                   # NEW: Sensor platform for analytics
-├── switch.py                   # NEW: Zone demand switches + central pump controller
+├── switch.py                   # NEW: Zone demand switches + central controller
 ├── manifest.json
 └── translations/
     └── en.json
@@ -151,15 +146,7 @@ custom_components/adaptive_thermostat/
        - Excessive oscillations → decrease PWM period
      - Track valve cycle count for wear optimization
 
-6. **Create `adaptive/zone_rules.py`**
-   - Port zone-specific adjustment logic
-   - Kitchen: lower Ki (oven/door disturbances)
-   - Bathroom: higher Kp (skylight heat loss)
-   - Bedroom: lower Ki (night ventilation)
-   - Ground floor: higher Ki (exterior doors)
-   - Make rules configurable per-zone in YAML
-
-7. **Integrate learning into climate entity**
+6. **Integrate learning into climate entity**
    - Add `async_run_learning()` method to climate.py
    - Schedule daily learning (3:00 AM) via `async_track_time_change`
    - Store learning data in entity extra_state_attributes
@@ -438,7 +425,7 @@ custom_components/adaptive_thermostat/
 | `coordinator.py` | Create | Cross-zone coordination |
 | `sensor.py` | Create | Analytics sensors |
 | `switch.py` | Create | Heating/cooling demand output switches |
-| `adaptive/*.py` | Create | Learning, physics, zone rules, preheating |
+| `adaptive/*.py` | Create | Learning, physics, preheating |
 | `analytics/*.py` | Create | Performance, energy, heat output, health |
 | `services.yaml` | Modify | Add new services |
 
